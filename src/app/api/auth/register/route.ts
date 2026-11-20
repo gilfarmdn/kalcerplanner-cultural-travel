@@ -21,6 +21,9 @@ export async function POST(req: Request) {
   const parsed = registerSchema.safeParse(body);
   if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Input tidak valid");
 
+  // Batas per penerima: mencegah register dipakai membanjiri satu alamat dengan email verifikasi.
+  if (!rateLimit(`register-email:${parsed.data.email}`, 3, 60 * 60_000)) return fail(TOO_MANY, 429);
+
   try {
     const existing = await prisma.user.findUnique({
       where: { email: parsed.data.email },
