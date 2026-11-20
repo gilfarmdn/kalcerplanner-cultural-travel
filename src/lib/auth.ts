@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -8,7 +9,13 @@ export type SessionUser = { id: string; name: string; email: string };
 
 /** Membuat sesi baru (cookie sesi: berakhir saat peramban ditutup atau 45 menit tanpa aktivitas). */
 export async function createSession(user: SessionUser) {
-  cookies().set(COOKIE_NAME, await signSession(user), sessionCookieOptions);
+  const row = await prisma.user.findUnique({ where: { id: user.id }, select: { passwordHash: true } });
+  cookies().set(COOKIE_NAME, await signSession(user, undefined, passwordFingerprint(row?.passwordHash ?? "")), sessionCookieOptions);
+}
+
+/** Sidik pendek dari hash password: berubah saat password diganti/reset, sehingga sesi lama gugur. */
+function passwordFingerprint(passwordHash: string): string {
+  return createHash("sha256").update(passwordHash).digest("hex").slice(0, 16);
 }
 
 export function destroySession() {
@@ -25,15 +32,18 @@ export type CurrentUser = {
 
 /** Session user re-read from the database (fresh role/profile). Null if signed out or the account is gone. */
 export async function getUser(): Promise<CurrentUser | null> {
-  const session = await getSession();
-  if (!session) return null;
+  const token = cookies().get(COOKIE_NAME)?.value;
+  const claims = token ? await verifySession(token) : null;
+  if (!claims) return null;
   const user = await prisma.user.findUnique({
-    where: { id: session.id },
-    select: { id: true, name: true, email: true, role: true, avatarUrl: true, deactivatedAt: true },
+    where: { id: claims.id },
+    select: { id: true, name: true, email: true, role: true, avatarUrl: true, deactivatedAt: true, passwordHash: true },
   });
   // Akun yang dinonaktifkan kurator diperlakukan seperti sudah keluar.
   if (!user || user.deactivatedAt) return null;
-  const { deactivatedAt: _, ...rest } = user;
+  // Password sudah diganti/direset sejak sesi ini dibuat: sesi dicabut.
+  if (passwordFingerprint(user.passwordHash) !== claims.pv) return null;
+  const { deactivatedAt: _, passwordHash: __, ...rest } = user;
   return rest;
 }
 
