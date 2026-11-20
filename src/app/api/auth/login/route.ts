@@ -3,7 +3,7 @@ import { hashPassword, needsRehash, verifyPassword } from "@/lib/password";
 import { prisma } from "@/lib/prisma";
 import { createSession } from "@/lib/auth";
 import { readBody, fail, TOO_MANY } from "@/lib/api";
-import { clientKey, rateLimit } from "@/lib/rate-limit";
+import { clearRateLimit, clientKey, isRateLimited, rateLimit, recordFailure } from "@/lib/rate-limit";
 import { roleHome } from "@/lib/role-home";
 import { safeNext } from "@/lib/safe-next";
 import { loginSchema } from "@/lib/validators";
@@ -17,15 +17,21 @@ export async function POST(req: Request) {
   const parsed = loginSchema.safeParse(body);
   if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Input tidak valid");
 
-  // Batas per email mencegah tebak-tebak password pada satu akun dari banyak alamat IP.
-  if (!rateLimit(`login-email:${parsed.data.email}`, 10, 15 * 60_000)) return fail(TOO_MANY, 429);
+  // Batas per email+klien: hanya password SALAH yang dihitung, dan penyerang dari IP lain
+  // tidak bisa mengunci pemilik akun. (Batas per-IP di atas membatasi tebakan dari banyak email.)
+  const emailKey = `login-email:${parsed.data.email}:${ip}`;
+  if (isRateLimited(emailKey, 10)) return fail(TOO_MANY, 429);
 
   try {
     const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
     // Pesan sama untuk email tak dikenal dan password salah (mencegah orang menebak email yang terdaftar).
     // bcrypt tetap dijalankan untuk email tak dikenal agar lama respons tidak membocorkannya.
     const valid = await verifyPassword(parsed.data.password, user?.passwordHash ?? null);
-    if (!user || !valid) return fail("Email atau password salah", 401);
+    if (!user || !valid) {
+      recordFailure(emailKey, 15 * 60_000);
+      return fail("Email atau password salah", 401);
+    }
+    clearRateLimit(emailKey);
 
     if (user.deactivatedAt) return fail("Akun ini dinonaktifkan oleh kurator. Hubungi kurator KalcerPlanner.", 403);
 
