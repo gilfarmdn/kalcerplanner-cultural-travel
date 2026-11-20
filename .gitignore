@@ -136,3 +136,6 @@ backups/
 *.sql
 .env.*
 !.env.example
+
+# Laporan threat model (jangan di-upload)
+threat-model/
