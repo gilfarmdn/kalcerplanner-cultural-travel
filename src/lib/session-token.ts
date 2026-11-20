@@ -13,7 +13,8 @@ export const ABSOLUTE_SECONDS = 12 * 60 * 60;
 /** Token baru diterbitkan paling sering sekali per RENEW_AFTER_SECONDS agar tidak menulis cookie di tiap permintaan. */
 export const RENEW_AFTER_SECONDS = 60;
 
-export type SessionClaims = { id: string; name: string; email: string; iat: number; loginAt: number };
+/** `pv` = sidik password saat sesi dibuat; sesi gugur begitu password berubah (lihat getUser). */
+export type SessionClaims = { id: string; name: string; email: string; iat: number; loginAt: number; pv: string };
 
 function getSecret() {
   const secret = process.env.AUTH_SECRET;
@@ -37,9 +38,9 @@ export const sessionCookieOptions = {
   path: "/",
 };
 
-export async function signSession(user: { id: string; name: string; email: string }, loginAt = nowSec()): Promise<string> {
+export async function signSession(user: { id: string; name: string; email: string }, loginAt = nowSec(), pv = ""): Promise<string> {
   const now = nowSec();
-  return new SignJWT({ name: user.name, email: user.email, loginAt })
+  return new SignJWT({ name: user.name, email: user.email, loginAt, pv })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(user.id)
     .setIssuedAt(now)
@@ -52,7 +53,8 @@ export async function verifySession(token: string): Promise<SessionClaims | null
     const { payload } = await jwtVerify(token, getSecret(), { algorithms: ["HS256"] });
     if (!payload.sub || typeof payload.name !== "string" || typeof payload.email !== "string" || typeof payload.iat !== "number") return null;
     const loginAt = typeof payload.loginAt === "number" ? payload.loginAt : payload.iat;
-    return { id: payload.sub, name: payload.name, email: payload.email, iat: payload.iat, loginAt };
+    const pv = typeof payload.pv === "string" ? payload.pv : "";
+    return { id: payload.sub, name: payload.name, email: payload.email, iat: payload.iat, loginAt, pv };
   } catch {
     return null;
   }
