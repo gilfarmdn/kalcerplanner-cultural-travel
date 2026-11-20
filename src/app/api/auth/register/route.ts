@@ -24,21 +24,21 @@ export async function POST(req: Request) {
   try {
     const existing = await prisma.user.findUnique({
       where: { email: parsed.data.email },
-      select: { id: true, emailVerifiedAt: true },
+      select: { id: true },
     });
-    if (existing?.emailVerifiedAt) return fail("Email sudah terdaftar. Silakan masuk.", 409);
-    
+    // Akun yang sudah ada (terverifikasi atau belum) tidak boleh diubah lewat pendaftaran,
+    // supaya orang lain tidak bisa menimpa password/role sebelum pemilik email memverifikasi.
+    if (existing) return fail("Email sudah terdaftar. Silakan masuk, atau kirim ulang email verifikasi dari halaman masuk.", 409);
+
     if (!(await canSendTo(parsed.data.email))) {
       return fail("Alamat email ini tidak dapat menerima email. Gunakan alamat lain.", 400);
     }
 
     const passwordHash = await hashPassword(parsed.data.password);
-    const data = { name: parsed.data.name, passwordHash, role: parsed.data.role };
-    // Akun yang belum pernah diverifikasi belum terbukti milik siapa pun (bisa salah ketik atau alamat palsu),
-    // jadi pendaftaran ulang menimpanya dan mengirim tautan verifikasi baru, bukan mengunci alamat itu.
-    const user = existing
-      ? await prisma.user.update({ where: { id: existing.id }, data, select: { id: true, name: true, email: true } })
-      : await prisma.user.create({ data: { ...data, email: parsed.data.email }, select: { id: true, name: true, email: true } });
+    const user = await prisma.user.create({
+      data: { name: parsed.data.name, passwordHash, role: parsed.data.role, email: parsed.data.email },
+      select: { id: true, name: true, email: true },
+    });
 
     let emailSent = true;
     try {
