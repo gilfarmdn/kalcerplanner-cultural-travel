@@ -8,7 +8,7 @@ import { TURNSTILE_FAILED, verifyTurnstile } from "@/lib/turnstile";
 import { emailOnlySchema } from "@/lib/validators";
 import { canSendTo } from "@/lib/email-check";
 
-/** Meminta tautan reset password. Tautan hanya dikirim ke email yang terdaftar; email lain ditolak dengan pesan jelas. */
+/** Meminta tautan reset password. Tautan hanya dikirim ke email yang terdaftar, tetapi respons selalu sama. */
 export async function POST(req: Request) {
   if (!rateLimit(`forgot-ip:${clientKey(req)}`, 10, 60 * 60_000)) return fail(TOO_MANY, 429);
 
@@ -27,12 +27,14 @@ export async function POST(req: Request) {
       where: { email: parsed.data.email },
       select: { id: true, name: true, email: true },
     });
-    if (!user) return fail("Email tidak terdaftar. Periksa kembali atau daftar akun baru.", 404, "EMAIL_NOT_FOUND");
-    if (!(await canSendTo(user.email))) return NextResponse.json({ ok: true, email: user.email }); // jangan kirim ke alamat bounce
+    // Respons sama untuk email terdaftar maupun tidak, agar tidak bisa dipakai menebak akun yang ada.
+    const uniform = NextResponse.json({ ok: true, email: parsed.data.email });
+    if (!user) return uniform;
+    if (!(await canSendTo(user.email))) return uniform; // jangan kirim ke alamat bounce
 
     const token = await issueToken(user.id, "RESET_PASSWORD");
     await sendResetEmail(req, user, token);
-    return NextResponse.json({ ok: true, email: user.email });
+    return uniform;
   } catch (error) {
     console.error("[auth/forgot-password] failed", error);
     return fail("Gagal mengirim tautan reset. Coba lagi nanti.", 500);
