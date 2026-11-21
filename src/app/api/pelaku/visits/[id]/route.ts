@@ -6,9 +6,10 @@ import { guardPelaku, ownedVisitWhere } from "@/lib/pelaku-api";
 import { toDay } from "@/lib/tanggal";
 import { visitUpdateSchema } from "@/lib/pelaku-validators";
 import { noticeVisits, upcomingVisits } from "@/lib/kuota";
+import { audit } from "@/lib/audit";
 
 const findVisit = (user: Parameters<typeof ownedVisitWhere>[0], id: string) =>
-  prisma.visit.findFirst({ where: { id, ...ownedVisitWhere(user) }, select: { id: true, objectId: true, status: true, userId: true } });
+  prisma.visit.findFirst({ where: { id, ...ownedVisitWhere(user) }, select: { id: true, objectId: true, status: true, userId: true, visitDate: true, partySize: true } });
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const g = await guardPelaku();
@@ -35,6 +36,12 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     if (d.status === "CANCELLED" && existing.status === "BOOKED" && existing.userId) {
       await noticeVisits(await upcomingVisits({ id: existing.id }), "Pendaftaranmu dibatalkan oleh pengelola.", true);
     }
+    // Perubahan tanggal / jumlah orang pada pendaftaran online dikabari ke wisatawannya.
+    const dateChanged = d.visitDate !== undefined && toDay(d.visitDate).getTime() !== existing.visitDate.getTime();
+    const sizeChanged = d.partySize !== undefined && d.partySize !== existing.partySize;
+    if (existing.userId && existing.status === "BOOKED" && d.status !== "CANCELLED" && (dateChanged || sizeChanged)) {
+      await noticeVisits(await upcomingVisits({ id: existing.id }), "Pengelola mengubah tanggal atau jumlah orang pada pendaftaranmu.", false);
+    }
     await prisma.visit.update({
       where: { id: existing.id },
       data: {
@@ -47,6 +54,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         ...(d.eventId !== undefined ? { eventId: d.eventId } : {}),
       },
     });
+    await audit(g.user.id, "UPDATE_VISIT", "VISIT", existing.id, Object.keys(d).join(","));
     return NextResponse.json({ ok: true });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
@@ -66,6 +74,7 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
 
   try {
     await prisma.visit.delete({ where: { id: existing.id } });
+    await audit(g.user.id, "DELETE_VISIT", "VISIT", existing.id);
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("[pelaku/visits] delete failed", error);
