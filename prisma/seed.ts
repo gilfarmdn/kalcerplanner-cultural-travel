@@ -15,8 +15,8 @@ async function seedAdmin() {
   const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
   if (existing) {
     // Akun kurator dianggap sudah terverifikasi (dibuat oleh pengelola, bukan pendaftaran mandiri).
-    await prisma.user.updateMany({ where: { email, emailVerifiedAt: null }, data: { emailVerifiedAt: new Date() } });
-    await prisma.user.update({ where: { email }, data: { role: "ADMIN" } });
+    // Seed hanya MEMBUAT admin; akun yang sudah ada (mis. didaftarkan orang lain dengan email ini) tidak dipromosikan.
+    console.warn(`ADMIN_EMAIL ${email} sudah terdaftar; seed tidak mengubah role akun itu. Ubah manual lewat database bila memang diinginkan.`);
     return;
   }
   await prisma.user.create({
