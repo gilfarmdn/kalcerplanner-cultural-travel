@@ -3,13 +3,13 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { fail, firstIssue, readBody } from "@/lib/api";
 import { guardPelaku, ownedVisitWhere } from "@/lib/pelaku-api";
-import { toDay } from "@/lib/tanggal";
+import { dayString, toDay } from "@/lib/tanggal";
 import { visitUpdateSchema } from "@/lib/pelaku-validators";
-import { noticeVisits, upcomingVisits } from "@/lib/kuota";
+import { ACTIVE_VISIT, KuotaError, ensureCapacity, noticeVisits, upcomingVisits } from "@/lib/kuota";
 import { audit } from "@/lib/audit";
 
 const findVisit = (user: Parameters<typeof ownedVisitWhere>[0], id: string) =>
-  prisma.visit.findFirst({ where: { id, ...ownedVisitWhere(user) }, select: { id: true, objectId: true, status: true, userId: true, visitDate: true, partySize: true } });
+  prisma.visit.findFirst({ where: { id, ...ownedVisitWhere(user) }, select: { id: true, objectId: true, eventId: true, status: true, userId: true, visitDate: true, partySize: true } });
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const g = await guardPelaku();
@@ -36,27 +36,42 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     if (d.status === "CANCELLED" && existing.status === "BOOKED" && existing.userId) {
       await noticeVisits(await upcomingVisits({ id: existing.id }), "Pendaftaranmu dibatalkan oleh pengelola.", true);
     }
-    // Perubahan tanggal / jumlah orang pada pendaftaran online dikabari ke wisatawannya.
     const dateChanged = d.visitDate !== undefined && toDay(d.visitDate).getTime() !== existing.visitDate.getTime();
     const sizeChanged = d.partySize !== undefined && d.partySize !== existing.partySize;
-    if (existing.userId && existing.status === "BOOKED" && d.status !== "CANCELLED" && (dateChanged || sizeChanged)) {
+    const newStatus = d.status ?? existing.status;
+    const wasActive = (ACTIVE_VISIT as readonly string[]).includes(existing.status);
+    const willBeActive = (ACTIVE_VISIT as readonly string[]).includes(newStatus);
+    // Kuota diperiksa bila kunjungan aktif dan jumlah orang bertambah, tanggalnya pindah, atau ia diaktifkan kembali.
+    const needsCapacity =
+      willBeActive && ((d.partySize !== undefined && d.partySize > existing.partySize) || dateChanged || !wasActive);
+    const targetEventId = d.eventId !== undefined ? d.eventId : existing.eventId;
+    const target = existing.objectId ? { objectId: existing.objectId, eventId: targetEventId } : { eventId: existing.eventId! };
+
+    await prisma.$transaction(async (tx) => {
+      if (needsCapacity) {
+        await ensureCapacity(tx, target, d.visitDate ?? dayString(existing.visitDate), d.partySize ?? existing.partySize, existing.id);
+      }
+      await tx.visit.update({
+        where: { id: existing.id },
+        data: {
+          ...(d.visitorName !== undefined ? { visitorName: d.visitorName } : {}),
+          ...(d.contact !== undefined ? { contact: d.contact || null } : {}),
+          ...(d.partySize !== undefined ? { partySize: d.partySize } : {}),
+          ...(d.visitDate !== undefined ? { visitDate: toDay(d.visitDate) } : {}),
+          ...(d.note !== undefined ? { note: d.note || null } : {}),
+          ...(d.status !== undefined ? { status: d.status } : {}),
+          ...(d.eventId !== undefined ? { eventId: d.eventId } : {}),
+        },
+      });
+    });
+    // Perubahan tanggal / jumlah orang pada pendaftaran online dikabari ke wisatawannya (setelah berhasil disimpan).
+    if (existing.userId && existing.status === "BOOKED" && newStatus === "BOOKED" && (dateChanged || sizeChanged)) {
       await noticeVisits(await upcomingVisits({ id: existing.id }), "Pengelola mengubah tanggal atau jumlah orang pada pendaftaranmu.", false);
     }
-    await prisma.visit.update({
-      where: { id: existing.id },
-      data: {
-        ...(d.visitorName !== undefined ? { visitorName: d.visitorName } : {}),
-        ...(d.contact !== undefined ? { contact: d.contact || null } : {}),
-        ...(d.partySize !== undefined ? { partySize: d.partySize } : {}),
-        ...(d.visitDate !== undefined ? { visitDate: toDay(d.visitDate) } : {}),
-        ...(d.note !== undefined ? { note: d.note || null } : {}),
-        ...(d.status !== undefined ? { status: d.status } : {}),
-        ...(d.eventId !== undefined ? { eventId: d.eventId } : {}),
-      },
-    });
     await audit(g.user.id, "UPDATE_VISIT", "VISIT", existing.id, Object.keys(d).join(","));
     return NextResponse.json({ ok: true });
   } catch (error) {
+    if (error instanceof KuotaError) return fail(error.message, error.status);
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return fail("Pengunjung ini sudah terdaftar pada tanggal tersebut", 409);
     }
