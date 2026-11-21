@@ -87,7 +87,7 @@ export default async function DestinasiDetailPage({ params }: { params: { id: st
 
         <section>
           <h2 className="mb-3 text-lg font-semibold">Event budaya ({events.length})</h2>
-          <EventManager objectId={object.id} events={events} />
+          <EventManager objectId={object.id} events={events} today={dayString(today)} />
         </section>
 
         <section>
