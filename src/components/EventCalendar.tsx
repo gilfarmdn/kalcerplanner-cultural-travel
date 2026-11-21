@@ -117,7 +117,8 @@ export default function EventCalendar({
             if (!ymd) return <div key={`blank-${i}`} className="h-14 border-b border-r border-neutral-100 bg-neutral-50/60 sm:h-20" />;
             const isSelected = ymd === selected;
             const isToday = ymd === today;
-            const has = itemsOn(ymd).length > 0;
+            // Tanggal yang sudah terlewat tidak diberi titik hijau.
+            const has = ymd >= today && itemsOn(ymd).length > 0;
             return (
               <button
                 key={ymd}
