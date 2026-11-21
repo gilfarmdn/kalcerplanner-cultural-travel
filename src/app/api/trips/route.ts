@@ -4,6 +4,7 @@ import { fail, firstIssue, guard, readBody } from "@/lib/api";
 import { getPlannerEvents, getPlannerObjects } from "@/lib/culture-db";
 import { formatRange } from "@/lib/format";
 import { buildSinglePlan } from "@/lib/planner";
+import { rateLimit } from "@/lib/rate-limit";
 import { saveTripSchema } from "@/lib/validators";
 
 /**
@@ -13,6 +14,9 @@ import { saveTripSchema } from "@/lib/validators";
 export async function POST(req: Request) {
   const g = await guard();
   if (!g.ok) return g.error;
+  // Batas laju dan jumlah rencana per akun, supaya statistik publik tidak bisa digelembungkan satu akun.
+  if (!rateLimit(`trip:${g.user.id}`, 20, 60 * 60_000)) return fail("Terlalu banyak rencana disimpan. Coba lagi nanti.", 429);
+  if ((await prisma.trip.count({ where: { userId: g.user.id } })) >= 100) return fail("Batas 100 rencana tersimpan tercapai. Hapus rencana lama dulu.", 403);
 
   const body = await readBody(req);
   if (body === null) return fail("Body tidak valid");
