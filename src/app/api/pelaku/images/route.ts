@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { fail, guard, TOO_MANY } from "@/lib/api";
-import { rateLimit } from "@/lib/rate-limit";
+import { fail, guard } from "@/lib/api";
+import { guardUpload } from "@/lib/upload-guard";
 import { MAX_IMAGE_BYTES, imageUrlFor, sniffImageType } from "@/lib/images";
-
-const MAX_IMAGES_PER_USER = 200;
-const MAX_BYTES_PER_USER = 100 * 1024 * 1024; // 100 MB
 
 /** Unggah foto (multipart, field "file") untuk destinasi, event, atau produk UMKM. Mengembalikan URL yang lalu disimpan di imageUrl. */
 export async function POST(req: Request) {
@@ -13,16 +10,8 @@ export async function POST(req: Request) {
   const g = await guard(["PRACTITIONER", "UMKM"]);
   if (!g.ok) return g.error;
 
-  // Batas laju per pengguna, lalu kuota total per pengguna (foto disimpan di database).
-  if (!rateLimit(`upload:${g.user.id}`, 20, 10 * 60_000)) return fail(TOO_MANY, 429);
-  const used = await prisma.imageAsset.aggregate({
-    where: { uploaderId: g.user.id },
-    _count: { _all: true },
-    _sum: { size: true },
-  });
-  if (used._count._all >= MAX_IMAGES_PER_USER || (used._sum.size ?? 0) >= MAX_BYTES_PER_USER) {
-    return fail("Kuota unggahan foto akunmu sudah penuh. Hubungi kurator.", 403);
-  }
+  const blocked = await guardUpload(req, g.user.id);
+  if (blocked) return blocked;
 
   let file: FormDataEntryValue | null;
   try {
