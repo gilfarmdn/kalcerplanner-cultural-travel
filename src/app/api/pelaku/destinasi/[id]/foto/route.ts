@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { MAX_IMAGE_BYTES, sniffImageType } from "@/lib/images";
 import { fail } from "@/lib/api";
+import { stripImageMetadata } from "@/lib/strip-metadata";
 import { findManageableObject, guardPelaku } from "@/lib/pelaku-api";
 import { clientKey, rateLimit } from "@/lib/rate-limit";
 
@@ -30,9 +31,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (file.size === 0) return fail("Berkas kosong");
   if (file.size > MAX_IMAGE_BYTES) return fail("Foto terlalu besar (maksimal 2 MB)", 413);
 
-  const bytes = Buffer.from(await file.arrayBuffer());
-  const mime = sniffImageType(bytes);
+  const raw = Buffer.from(await file.arrayBuffer());
+  const mime = sniffImageType(raw);
   if (!mime) return fail("Format foto harus JPG, PNG, atau WebP");
+  // Buang metadata (lokasi GPS, perangkat, dll.) sebelum disimpan.
+  const bytes = stripImageMetadata(raw, mime);
+  if (!bytes) return fail("Berkas foto rusak atau tidak valid");
 
   try {
     const url = await prisma.$transaction(async (tx) => {
