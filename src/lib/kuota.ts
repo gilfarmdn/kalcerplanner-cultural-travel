@@ -128,6 +128,36 @@ export async function registerVisit(input: {
   }
 }
 
+/**
+ * Pastikan perubahan pada kunjungan yang sudah ada tidak melampaui kuota harian tujuannya. Dipanggil di dalam
+ * transaksi: baris tujuan dikunci (seperti registerVisit), lalu jumlah terisi pada tanggal itu dihitung TANPA
+ * kunjungan ini. Tujuan tanpa kuota tidak dibatasi.
+ */
+export async function ensureCapacity(
+  tx: Prisma.TransactionClient,
+  target: VisitTarget,
+  date: string,
+  partySize: number,
+  excludeVisitId: string,
+) {
+  const locked = target.objectId
+    ? await tx.$queryRaw<{ dailyQuota: number | null }[]>`
+        SELECT "dailyQuota" FROM "CulturalObject" WHERE id = ${target.objectId} FOR UPDATE`
+    : await tx.$queryRaw<{ dailyQuota: number | null }[]>`
+        SELECT "dailyQuota" FROM "CulturalEvent" WHERE id = ${target.eventId} FOR UPDATE`;
+  const quota = locked[0]?.dailyQuota ?? null;
+  if (quota === null) return;
+  const agg = await tx.visit.aggregate({
+    _sum: { partySize: true },
+    where: { ...targetWhere(target), visitDate: toDay(date), status: { in: [...ACTIVE_VISIT] }, id: { not: excludeVisitId } },
+  });
+  const filled = agg._sum.partySize ?? 0;
+  if (filled + partySize > quota) {
+    const left = Math.max(0, quota - filled);
+    throw new KuotaError(left === 0 ? "Kuota pada tanggal ini sudah penuh" : `Kuota tidak cukup. Sisa ${left} slot`, 409);
+  }
+}
+
 type NoticeTarget = {
   id: string;
   visitDate: Date;
