@@ -8,6 +8,8 @@ export type Mail = { to: string; subject: string; text: string; html: string };
 export async function sendMail(mail: Mail): Promise<void> {
   const host = process.env.SMTP_HOST?.trim();
   if (!host) {
+    // Di production jangan menulis isi email (berisi tautan token) ke log: gagalkan agar terlihat.
+    if (process.env.NODE_ENV === "production") throw new Error("SMTP_HOST belum diisi (wajib di production)");
     console.log(
       `\n[mailer] SMTP_HOST belum diisi, email TIDAK dikirim. Isi email untuk ${mail.to}:\n` +
         `  Subjek: ${mail.subject}\n\n${mail.text}\n`,
