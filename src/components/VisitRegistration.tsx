@@ -175,6 +175,9 @@ export default function VisitRegistration({
               ? "Tidak berlangsung / tutup pada tanggal ini. Pilih tanggal lain."
               : `Sisa ${info.remaining} slot pada ${formatHariPanjang(date)}.`}
           </p>
+          <p className="basis-full text-xs text-neutral-600">
+            Dengan mendaftar, nama dan email kamu dibagikan kepada pengelola tempat ini untuk keperluan kunjungan.
+          </p>
         </form>
       ) : (
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -259,6 +262,9 @@ export function RegisterAll({
         Jumlah orang
         <input type="number" required min={1} max={500} value={party} onChange={(e) => setParty(Math.max(1, Number(e.target.value) || 1))} className={`${field} w-24`} />
       </label>
+      <p className="text-xs text-neutral-600">
+        Dengan mendaftar, nama dan email kamu dibagikan kepada pengelola tiap tempat untuk keperluan kunjungan.
+      </p>
       {results && (
         <ul className="space-y-1">
           {results.map((r) => (
