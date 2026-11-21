@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { audit } from "@/lib/audit";
 import { fail, firstIssue, guard, readBody } from "@/lib/api";
 import { verifySchema } from "@/lib/validators";
 
@@ -20,6 +21,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       data: parsed.data.action === "VERIFY" ? { status: "VERIFIED", verifiedAt: new Date() } : { status: "REJECTED", verifiedAt: null },
     });
     if (result.count === 0) return fail("Data tidak ditemukan", 404);
+    await audit(g.user.id, parsed.data.action, "UMKM_PRODUCT", params.id);
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("[admin/umkm] verify failed", error);
