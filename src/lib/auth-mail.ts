@@ -61,3 +61,16 @@ export async function sendResetEmail(req: Request, user: { name: string; email: 
   });
   await sendMail({ to: user.email, subject: "Atur ulang password KalcerPlanner", text, html });
 }
+
+/** Notifikasi netral ke pemilik alamat yang sudah punya akun saat ada yang mencoba mendaftar dengan alamat itu. Tanpa token. */
+export async function sendExistingAccountNotice(user: { name: string }, email: string) {
+  const base = (process.env.APP_URL?.trim() ?? "").replace(/\/+$/, "");
+  const { text, html } = render({
+    name: user.name,
+    intro: "Ada permintaan pendaftaran KalcerPlanner memakai alamat email ini, padahal kamu sudah punya akun. Tidak ada yang diubah pada akunmu.",
+    button: "Masuk ke KalcerPlanner",
+    url: `${base}/masuk`,
+    outro: "Jika itu kamu, silakan masuk (atau pakai Lupa password bila lupa). Jika bukan, abaikan email ini.",
+  });
+  await sendMail({ to: email, subject: "Percobaan pendaftaran dengan email kamu", text, html });
+}
