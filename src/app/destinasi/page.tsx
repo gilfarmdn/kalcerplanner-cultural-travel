@@ -5,7 +5,8 @@ import PageHeading from "@/components/pelaku/PageHeading";
 import StatusPill from "@/components/pelaku/StatusPill";
 import { requirePractitioner } from "@/lib/auth";
 import { ownedEventWhere, ownedObjectWhere, ownedVisitWhere } from "@/lib/pelaku-api";
-import { toDay, hariIniJakarta } from "@/lib/tanggal";
+import { dayString, toDay, hariIniJakarta } from "@/lib/tanggal";
+import { eventHasEnded } from "@/lib/kalender";
 import { prisma } from "@/lib/prisma";
 
 export const metadata: Metadata = { title: "My Destination — KalcerPlanner" };
@@ -26,7 +27,7 @@ export default async function PelakuHomePage() {
     prisma.culturalEvent.findMany({
       where: ownedEventWhere(user),
       orderBy: { createdAt: "desc" },
-      select: { id: true, slug: true, title: true, zone: true, status: true, imageUrl: true, isActive: true },
+      select: { id: true, slug: true, title: true, zone: true, status: true, imageUrl: true, isActive: true, startsOn: true, endsOn: true, repeatsYearly: true, weekdays: true },
     }),
     prisma.visit.aggregate({
       where: { ...ownedVisitWhere(user), visitDate: today, status: { not: "CANCELLED" } },
@@ -58,7 +59,18 @@ export default async function PelakuHomePage() {
       <Section title="Destinasi Wisata" items={destinations} basePath="/destinasi" empty="Belum ada destinasi. Klik “Tambah Destinasi Wisata” untuk memulai." />
       <Section
         title="Event Budaya"
-        items={events.map((e) => ({ id: e.id, slug: e.slug, name: e.title, zone: e.zone ?? "", status: e.status, imageUrl: e.imageUrl }))}
+        items={events.map((e) => ({
+          id: e.id,
+          slug: e.slug,
+          name: e.title,
+          zone: e.zone ?? "",
+          status: e.status,
+          imageUrl: e.imageUrl,
+          ended: eventHasEnded(
+            { startsOn: e.startsOn ? dayString(e.startsOn) : null, endsOn: e.endsOn ? dayString(e.endsOn) : null, repeatsYearly: e.repeatsYearly, weekdays: e.weekdays, exceptDates: [] },
+            dayString(today),
+          ),
+        }))}
         basePath="/destinasi/event"
         empty="Belum ada event. Pilih “Event Budaya” saat menambah."
       />
@@ -73,6 +85,8 @@ type DestinationItem = {
   zone: string;
   status: string;
   imageUrl: string | null;
+  /** Event yang tanggal pelaksanaannya sudah lewat: kartu ditampilkan abu-abu. */
+  ended?: boolean;
 };
 
 function Section({ title, items, empty, basePath }: { title: string; items: DestinationItem[]; empty: string; basePath: string }) {
@@ -86,9 +100,12 @@ function Section({ title, items, empty, basePath }: { title: string; items: Dest
           {items.map((d) => (
             <li key={d.id} className="overflow-hidden rounded-md shadow-[0_3px_6px_rgba(0,0,0,0.25)]">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={d.imageUrl || `/api/placeholder/${d.slug}`} alt={d.name} className="h-36 w-full object-cover sm:h-44" />
-              <div className="flex flex-col items-center gap-2 bg-white px-4 pb-3 pt-4">
-                <p className="text-center text-sm font-medium">{d.name}</p>
+              <img src={d.imageUrl || `/api/placeholder/${d.slug}`} alt={d.name} className={`h-36 w-full object-cover sm:h-44 ${d.ended ? "grayscale" : ""}`} />
+              <div className={`flex flex-col items-center gap-2 px-4 pb-3 pt-4 ${d.ended ? "bg-neutral-200 text-neutral-500" : "bg-white"}`}>
+                <p className="text-center text-sm font-medium">
+                  {d.name}
+                  {d.ended && <span className="ml-2 rounded-full bg-neutral-300 px-2 py-0.5 text-[11px] font-normal text-neutral-700">Selesai</span>}
+                </p>
                 <div className="flex items-center gap-2 text-xs text-neutral-600">
                   <span>{d.zone}</span>
                   <StatusPill status={d.status} />
