@@ -20,7 +20,7 @@ export async function POST(req: Request) {
 
   await prisma.emailBounce.upsert({
     where: { email },
-    update: { reason: body.event },
+    update: { reason: body.event, createdAt: new Date() },
     create: { email, reason: body.event },
   });
   // Hanya akun yang belum pernah terverifikasi yang dihapus otomatis; akun terverifikasi tidak disentuh.
