@@ -30,6 +30,10 @@ export async function POST(req: Request) {
         ...eventScheduleData(d),
         venue: d.venue ?? null,
         isActive: d.isActive,
+        // Event pada destinasi juga lewat kurasi: tersembunyi sampai kurator memverifikasinya.
+        status: "PENDING",
+        verifiedAt: null,
+        ownerId: g.user.id,
       },
       select: { id: true },
     });
