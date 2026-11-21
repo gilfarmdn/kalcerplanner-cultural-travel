@@ -39,6 +39,10 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
         ...eventScheduleData(d),
         venue: d.venue ?? null,
         isActive: d.isActive,
+        // Setiap perubahan isi event diverifikasi ulang oleh kurator.
+        status: "PENDING",
+        verifiedAt: null,
+        ownerId: g.user.id,
       },
     });
 
