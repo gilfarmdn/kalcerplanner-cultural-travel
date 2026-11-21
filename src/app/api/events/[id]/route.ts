@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { audit } from "@/lib/audit";
 import { fail, firstIssue, guard, readBody } from "@/lib/api";
 import { verifySchema } from "@/lib/validators";
 
@@ -16,8 +17,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   try {
     const result = await prisma.culturalEvent.updateMany({
-      // Hanya event mandiri yang diajukan pelaku; catatan kalender tidak lewat kurasi.
-      where: { id: params.id, ownerId: { not: null }, objectId: null },
+      // Hanya event yang diajukan pelaku (mandiri maupun pada destinasi); catatan kalender bawaan tidak lewat kurasi.
+      where: { id: params.id, ownerId: { not: null } },
       data:
         action === "VERIFY"
           ? {
@@ -29,6 +30,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           : { status: "REJECTED", verifiedAt: null },
     });
     if (result.count === 0) return fail("Data tidak ditemukan", 404);
+    await audit(g.user.id, parsed.data.action, "EVENT", params.id);
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("[events] verify failed", error);
