@@ -4,6 +4,7 @@ import { fail, guard, readBody } from "@/lib/api";
 import { noticeVisits, upcomingVisits } from "@/lib/kuota";
 import { toDay, hariIniJakarta } from "@/lib/tanggal";
 import { prisma } from "@/lib/prisma";
+import { audit } from "@/lib/audit";
 
 const actionSchema = z.object({ action: z.enum(["DEACTIVATE", "ACTIVATE"]) });
 
@@ -27,6 +28,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       where: { id: user.id },
       data: { deactivatedAt: parsed.data.action === "DEACTIVATE" ? new Date() : null },
     });
+    await audit(g.user.id, parsed.data.action, "USER", user.id);
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("[admin/users] update failed", error);
@@ -50,7 +52,7 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   try {
     const [owned, ownedEvents] = await Promise.all([
       prisma.culturalObject.findMany({ where: { ownerId: user.id }, select: { id: true } }),
-      prisma.culturalEvent.findMany({ where: { ownerId: user.id, objectId: null }, select: { id: true } }),
+      prisma.culturalEvent.findMany({ where: { ownerId: user.id }, select: { id: true } }),
     ]);
     if (owned.length > 0) {
       const ids = owned.map((o) => o.id);
@@ -72,6 +74,7 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
       }),
       prisma.user.delete({ where: { id: user.id } }),
     ]);
+    await audit(g.user.id, "DELETE", "USER", user.id);
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("[admin/users] delete failed", error);
