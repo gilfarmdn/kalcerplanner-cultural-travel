@@ -9,13 +9,18 @@ export type SessionUser = { id: string; name: string; email: string };
 
 /** Membuat sesi baru (cookie sesi: berakhir saat peramban ditutup atau 45 menit tanpa aktivitas). */
 export async function createSession(user: SessionUser) {
-  const row = await prisma.user.findUnique({ where: { id: user.id }, select: { passwordHash: true } });
-  cookies().set(COOKIE_NAME, await signSession(user, undefined, passwordFingerprint(row?.passwordHash ?? "")), sessionCookieOptions);
+  const row = await prisma.user.findUnique({ where: { id: user.id }, select: { passwordHash: true, sessionEpoch: true } });
+  cookies().set(COOKIE_NAME, await signSession(user, undefined, passwordFingerprint(row?.passwordHash ?? "", row?.sessionEpoch ?? 0)), sessionCookieOptions);
 }
 
-/** Sidik pendek dari hash password: berubah saat password diganti/reset, sehingga sesi lama gugur. */
-function passwordFingerprint(passwordHash: string): string {
-  return createHash("sha256").update(passwordHash).digest("hex").slice(0, 16);
+/** Sidik pendek dari hash password + epoch sesi: berubah saat password diganti/reset atau pengguna keluar, sehingga sesi lama gugur. */
+function passwordFingerprint(passwordHash: string, epoch: number): string {
+  return createHash("sha256").update(`${passwordHash}:${epoch}`).digest("hex").slice(0, 16);
+}
+
+/** Keluar: cookie dihapus DAN semua sesi yang pernah diterbitkan untuk akun ini dicabut di server. */
+export async function revokeSessions(userId: string) {
+  await prisma.user.update({ where: { id: userId }, data: { sessionEpoch: { increment: 1 } } }).catch((e) => console.error("[auth] revoke failed", e));
 }
 
 export function destroySession() {
@@ -37,13 +42,13 @@ export async function getUser(): Promise<CurrentUser | null> {
   if (!claims) return null;
   const user = await prisma.user.findUnique({
     where: { id: claims.id },
-    select: { id: true, name: true, email: true, role: true, avatarUrl: true, deactivatedAt: true, passwordHash: true },
+    select: { id: true, name: true, email: true, role: true, avatarUrl: true, deactivatedAt: true, passwordHash: true, sessionEpoch: true },
   });
   // Akun yang dinonaktifkan kurator diperlakukan seperti sudah keluar.
   if (!user || user.deactivatedAt) return null;
   // Password sudah diganti/direset sejak sesi ini dibuat: sesi dicabut.
-  if (passwordFingerprint(user.passwordHash) !== claims.pv) return null;
-  const { deactivatedAt: _, passwordHash: __, ...rest } = user;
+  if (passwordFingerprint(user.passwordHash, user.sessionEpoch) !== claims.pv) return null;
+  const { deactivatedAt: _, passwordHash: __, sessionEpoch: ___, ...rest } = user;
   return rest;
 }
 
