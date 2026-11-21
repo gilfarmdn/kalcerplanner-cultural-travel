@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { fail, guard } from "@/lib/api";
 import { MAX_IMAGE_BYTES, imageIdFromUrl, imageUrlFor, sniffImageType } from "@/lib/images";
 import { prisma } from "@/lib/prisma";
+import { guardUpload } from "@/lib/upload-guard";
 
 /** Hapus foto profil lama (hanya unggahan milik user itu sendiri). Tidak pernah melempar galat. */
 async function removeOld(userId: string, url: string | null) {
@@ -14,6 +15,8 @@ async function removeOld(userId: string, url: string | null) {
 export async function POST(req: Request) {
   const g = await guard();
   if (!g.ok) return g.error;
+  const blocked = await guardUpload(req, g.user.id);
+  if (blocked) return blocked;
 
   let file: FormDataEntryValue | null;
   try {
@@ -30,13 +33,16 @@ export async function POST(req: Request) {
   if (!mimeType) return fail("Format foto harus JPG, PNG, atau WebP");
 
   try {
-    const url = await prisma.$transaction(async (tx) => {
+    const { url, oldUrl } = await prisma.$transaction(async (tx) => {
+      // Kunci baris pengguna agar unggahan serentak berjalan bergantian dan tidak meninggalkan foto yatim.
+      await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${g.user.id} FOR UPDATE`;
+      const current = await tx.user.findUnique({ where: { id: g.user.id }, select: { avatarUrl: true } });
       const image = await tx.imageAsset.create({ data: { mimeType, size: data.length, data, uploaderId: g.user.id }, select: { id: true } });
       const url = imageUrlFor(image.id);
       await tx.user.update({ where: { id: g.user.id }, data: { avatarUrl: url } });
-      return url;
+      return { url, oldUrl: current?.avatarUrl ?? null };
     });
-    await removeOld(g.user.id, g.user.avatarUrl);
+    await removeOld(g.user.id, oldUrl);
     return NextResponse.json({ url }, { status: 201 });
   } catch (error) {
     console.error("[profile/foto] upload failed", error);
