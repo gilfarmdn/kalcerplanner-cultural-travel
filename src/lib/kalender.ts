@@ -39,6 +39,12 @@ export function monthCells(year: number, month: number): (string | null)[] {
 /** Bagian jadwal event yang menentukan kapan event berlangsung. */
 export type EventSchedule = Pick<CalEvent, "startsOn" | "endsOn" | "repeatsYearly" | "weekdays" | "exceptDates">;
 
+/** Event yang sudah lewat sepenuhnya: tidak berulang tahunan dan tanggal selesainya sebelum `today`. */
+export function eventHasEnded(e: EventSchedule, today: string): boolean {
+  if (!e.startsOn || e.repeatsYearly) return false;
+  return (e.endsOn ?? e.startsOn) < today;
+}
+
 /** Apakah event berlangsung pada tanggal itu? Event tanpa tanggal pasti tidak pernah dianggap berlangsung. */
 export function eventOccursOn(e: EventSchedule, ymd: string): boolean {
   if (!e.startsOn) return false;
