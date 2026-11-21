@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { fail, guard } from "@/lib/api";
+import { stripImageMetadata } from "@/lib/strip-metadata";
 import { guardUpload } from "@/lib/upload-guard";
 import { MAX_IMAGE_BYTES, imageUrlFor, sniffImageType } from "@/lib/images";
 
@@ -23,9 +24,12 @@ export async function POST(req: Request) {
   if (file.size === 0) return fail("File kosong");
   if (file.size > MAX_IMAGE_BYTES) return fail("Ukuran foto maksimal 2 MB");
 
-  const data = Buffer.from(await file.arrayBuffer());
-  const mimeType = sniffImageType(data);
+  const raw = Buffer.from(await file.arrayBuffer());
+  const mimeType = sniffImageType(raw);
   if (!mimeType) return fail("Format foto harus JPG, PNG, atau WebP");
+  // Buang metadata (lokasi GPS, perangkat, dll.) sebelum disimpan.
+  const data = stripImageMetadata(raw, mimeType);
+  if (!data) return fail("Berkas foto rusak atau tidak valid");
 
   try {
     const image = await prisma.imageAsset.create({
