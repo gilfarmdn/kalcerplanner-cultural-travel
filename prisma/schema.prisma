@@ -100,6 +100,8 @@ model User {
   deactivatedAt   DateTime?
   /// Foto profil: "/api/images/<id>" (ImageAsset milik user ini). Kosong = avatar bawaan.
   avatarUrl       String?
+  /// Dinaikkan saat keluar (logout): semua sesi yang diterbitkan sebelumnya gugur.
+  sessionEpoch    Int              @default(0)
   trips           Trip[]
   stamps          Stamp[]
   objects         CulturalObject[]
@@ -400,6 +402,20 @@ model EmailBounce {
   email     String   @id
   reason    String
   createdAt DateTime @default(now())
+}
+
+/// Catatan aksi kurator dan tindakan sensitif lain (hanya ditambah, tidak diubah). Tanpa relasi agar tetap ada saat akun dihapus.
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String
+  targetType String
+  targetId   String?
+  detail     String?
+  createdAt  DateTime @default(now())
+
+  @@index([actorId, createdAt])
+  @@index([targetType, targetId])
 }
 
 // Produk UMKM untuk Galeri UMKM dan saran oleh-oleh di rencana. `zone` memakai penamaan wilayah yang sama dengan
