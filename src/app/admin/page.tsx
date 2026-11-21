@@ -19,10 +19,11 @@ export default async function KurasiPage() {
       include: { owner: { select: { name: true, email: true } } },
     }),
     // Event budaya diajukan lewat tabel tersendiri (CulturalEvent), jadi antreannya juga terpisah.
+    // Termasuk event yang ditambahkan pada destinasi.
     prisma.culturalEvent.findMany({
-      where: { status: "PENDING", ownerId: { not: null }, objectId: null },
+      where: { status: "PENDING", ownerId: { not: null } },
       orderBy: { createdAt: "asc" },
-      include: { owner: { select: { name: true, email: true } } },
+      include: { owner: { select: { name: true, email: true } }, object: { select: { name: true } } },
     }),
     // Produk UMKM diajukan pelaku UMKM; antreannya juga terpisah.
     prisma.umkmProduct.findMany({
@@ -77,7 +78,7 @@ export default async function KurasiPage() {
             <li key={e.id} className="rounded-[10px] border border-neutral-400 bg-white p-4">
               <p className="text-lg font-semibold">{e.title}</p>
               <p className="text-sm text-neutral-600">
-                Event · {e.interest ? interestInfo[e.interest].label : "—"} · {e.zone ?? "—"} · diajukan oleh {e.owner?.name ?? "—"} ({e.owner?.email ?? "—"})
+                {e.object ? `Event pada destinasi ${e.object.name}` : "Event mandiri"} · {e.interest ? interestInfo[e.interest].label : "—"} · {e.zone ?? "—"} · diajukan oleh {e.owner?.name ?? "—"} ({e.owner?.email ?? "—"})
               </p>
               <p className="mt-2 text-sm">{e.description}</p>
               {e.meaning && (
