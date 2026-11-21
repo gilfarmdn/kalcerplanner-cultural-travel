@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 async function load(slug: string) {
   return prisma.culturalObject.findFirst({
     where: { slug, status: { in: [...VISIBLE_STATUSES] } },
-    include: { events: { where: { isActive: true } } },
+    include: { events: { where: { isActive: true, status: { in: [...VISIBLE_STATUSES] } } } },
   });
 }
 
