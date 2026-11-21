@@ -4,6 +4,8 @@ import { guardPelaku } from "@/lib/pelaku-api";
 import { dayString } from "@/lib/tanggal";
 import { visitStatusLabel } from "@/lib/pelaku-validators";
 import { visitWhere } from "@/lib/pelaku-visits";
+import { audit } from "@/lib/audit";
+import { rateLimit } from "@/lib/rate-limit";
 
 // Sel yang diawali = + - @ diberi awalan ' agar tidak dieksekusi sebagai rumus di Excel (CSV injection).
 const cell = (v: string | number | null | undefined) => {
@@ -16,6 +18,8 @@ const cell = (v: string | number | null | undefined) => {
 export async function GET(req: Request) {
   const g = await guardPelaku();
   if (!g.ok) return g.error;
+  // Ekspor memuat nama dan kontak wisatawan: dibatasi lajunya dan setiap ekspor dicatat.
+  if (!rateLimit(`export:${g.user.id}`, 5, 60 * 60_000)) return fail("Terlalu banyak ekspor. Coba lagi nanti.", 429);
 
   const sp = new URL(req.url).searchParams;
   const where = visitWhere(g.user, {
@@ -31,9 +35,10 @@ export async function GET(req: Request) {
     const rows = await prisma.visit.findMany({
       where,
       orderBy: [{ visitDate: "desc" }, { createdAt: "desc" }],
-      take: 5000,
+      take: 1000,
       include: { object: { select: { name: true } }, event: { select: { title: true } } },
     });
+    await audit(g.user.id, "EXPORT_VISITS", "VISIT", null, `${rows.length} baris`);
     const header = ["Tanggal", "Destinasi", "Event", "Nama", "Kontak", "Jumlah orang", "Status", "Sumber", "Catatan"];
     const lines = rows.map((r) =>
       [
