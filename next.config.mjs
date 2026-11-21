@@ -1,24 +1,6 @@
-const isDev = process.env.NODE_ENV !== "production";
-
-// Sumber luar yang dipakai situs: Cloudflare Turnstile (form daftar & lupa password) dan tile peta OpenStreetMap.
-// 'unsafe-inline' pada script-src diperlukan karena Next.js menyisipkan skrip inline untuk hidrasi;
-// 'unsafe-eval' hanya di mode dev (dipakai React Refresh).
-const csp = [
-  "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""} https://challenges.cloudflare.com`,
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://tile.openstreetmap.org",
-  "font-src 'self'",
-  "connect-src 'self'",
-  "frame-src https://challenges.cloudflare.com",
-  "frame-ancestors 'none'",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-].join("; ");
+// CSP dibuat per permintaan (dengan nonce) di src/middleware.ts via src/lib/csp.ts.
 
 const securityHeaders = [
-  { key: "Content-Security-Policy", value: csp },
   // Peramban hanya menerapkan HSTS lewat HTTPS (situs publik di Tailscale Funnel); di http://localhost diabaikan.
   { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
   { key: "X-Frame-Options", value: "DENY" },
