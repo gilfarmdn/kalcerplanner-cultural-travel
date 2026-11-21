@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import RecurrenceFields, { type RecurrenceValue } from "@/components/pelaku/RecurrenceFields";
 import { weekdaysText } from "@/lib/recurrence";
+import { eventHasEnded } from "@/lib/kalender";
 
 export type EventRow = {
   id: string;
@@ -26,7 +27,7 @@ function fmt(d: string) {
 }
 
 /** Tambah, ubah, dan hapus event budaya milik satu destinasi. */
-export default function EventManager({ objectId, events }: { objectId: string; events: EventRow[] }) {
+export default function EventManager({ objectId, events, today }: { objectId: string; events: EventRow[]; today: string }) {
   const router = useRouter();
   const [editing, setEditing] = useState<EventRow | "new" | null>(null);
   const [busy, setBusy] = useState(false);
@@ -105,7 +106,12 @@ export default function EventManager({ objectId, events }: { objectId: string; e
       ) : (
         <ul className="space-y-3">
           {events.map((ev) => (
-            <li key={ev.id} className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-neutral-300 p-3">
+            <li
+              key={ev.id}
+              className={`flex flex-wrap items-start justify-between gap-3 rounded-lg border p-3 ${
+                eventHasEnded(ev, today) ? "border-neutral-300 bg-neutral-100 text-neutral-500" : "border-neutral-300"
+              }`}
+            >
               <div className="min-w-0">
                 <p className="font-medium">
                   {ev.title}
